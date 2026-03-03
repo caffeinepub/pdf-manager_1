@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalBlob, type PdfEntry } from "../backend";
+import { ExternalBlob, type PdfEntry, type UserRole } from "../backend";
 import { useActor } from "./useActor";
 
 // ─── Query: Is Caller Admin ────────────────────────────────────────────────────
@@ -17,6 +17,42 @@ export function useIsAdmin() {
     },
     enabled: !!actor && !isFetching,
     staleTime: 60_000,
+  });
+}
+
+// ─── Query: Get Caller User Role ───────────────────────────────────────────────
+export function useCallerUserRole() {
+  const { actor, isFetching } = useActor();
+  return useQuery<UserRole | null>({
+    queryKey: ["callerUserRole"],
+    queryFn: async () => {
+      if (!actor) return null;
+      try {
+        return await actor.getCallerUserRole();
+      } catch {
+        // Throws when user is not registered
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 30_000,
+  });
+}
+
+// ─── Mutation: Initialize Access Control (Admin Setup) ────────────────────────
+export function useInitializeRole() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (token: string) => {
+      if (!actor) throw new Error("Actor not ready");
+      await actor._initializeAccessControlWithSecret(token);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["isAdmin"] });
+      queryClient.invalidateQueries({ queryKey: ["callerUserRole"] });
+    },
   });
 }
 

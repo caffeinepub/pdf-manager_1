@@ -17,8 +17,13 @@ import {
   Eye,
   FileText,
   HardDrive,
+  KeyRound,
   Loader2,
+  LogIn,
+  LogOut,
   Search,
+  Shield,
+  ShieldCheck,
   Smartphone,
   Trash2,
   Upload,
@@ -27,9 +32,12 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PdfEntry } from "./backend";
+import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import {
+  useCallerUserRole,
   useDeletePdf,
   useGetAllPdfs,
+  useInitializeRole,
   useIsAdmin,
   useSearchPdfs,
   useUploadPdf,
@@ -464,6 +472,185 @@ function DeleteDialog({
   );
 }
 
+// ─── Admin Setup Dialog ───────────────────────────────────────────────────────
+interface AdminSetupDialogProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
+  const [token, setToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const initializeRole = useInitializeRole();
+
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!token.trim()) {
+        setError("Token is required");
+        return;
+      }
+      setError(null);
+      try {
+        await initializeRole.mutateAsync(token.trim());
+        toast.success("Admin setup complete! You can now upload PDFs.");
+        setToken("");
+        onClose();
+      } catch {
+        setError("Wrong token. Please check and try again.");
+      }
+    },
+    [token, initializeRole, onClose],
+  );
+
+  const handleContinueAsUser = useCallback(async () => {
+    setError(null);
+    try {
+      await initializeRole.mutateAsync("");
+      toast.success("Logged in as regular user.");
+      onClose();
+    } catch {
+      setError("Something went wrong. Please try again.");
+    }
+  }, [initializeRole, onClose]);
+
+  const isPending = initializeRole.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && !isPending && onClose()}>
+      <DialogContent
+        className="max-w-md bg-card border-border"
+        data-ocid="admin.setup_dialog"
+      >
+        <DialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center amber-glow">
+              <Shield className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <DialogTitle className="font-display text-lg">
+                Pehli Baar Login
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground font-body mt-0.5">
+                Apni role select karein
+              </p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="py-2">
+          <p className="text-sm text-muted-foreground font-body leading-relaxed mb-4">
+            Agar aap{" "}
+            <span className="text-foreground font-semibold">manager</span> hain
+            toh neeche admin token enter karein. Agar aap user hain toh koi
+            token ki zaroorat nahi — seedha continue karein.
+          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="admin-token"
+                className="text-xs font-medium text-muted-foreground uppercase tracking-wide font-body"
+              >
+                Admin Secret Token
+              </label>
+              <div className="relative">
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="admin-token"
+                  data-ocid="admin.token_input"
+                  type={showToken ? "text" : "password"}
+                  placeholder="Token yahan enter karein…"
+                  value={token}
+                  onChange={(e) => {
+                    setToken(e.target.value);
+                    setError(null);
+                  }}
+                  disabled={isPending}
+                  className="pl-9 pr-10 font-mono text-sm bg-background border-border"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showToken ? "Hide token" : "Show token"}
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <p
+                data-ocid="admin.error_state"
+                className="text-xs text-destructive font-body flex items-center gap-1.5"
+              >
+                <X className="w-3.5 h-3.5 flex-shrink-0" />
+                {error}
+              </p>
+            )}
+
+            <Button
+              type="submit"
+              data-ocid="admin.setup_submit_button"
+              disabled={isPending || !token.trim()}
+              className="w-full font-display font-semibold gap-2 bg-primary text-primary-foreground hover:bg-primary/90 amber-glow"
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Setting up…
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4" />
+                  Setup as Admin
+                </>
+              )}
+            </Button>
+          </form>
+
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-card px-3 text-muted-foreground font-body">
+                ya phir
+              </span>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            data-ocid="admin.continue_as_user_button"
+            variant="outline"
+            disabled={isPending}
+            onClick={handleContinueAsUser}
+            className="w-full font-display gap-2 border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+          >
+            {isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <LogIn className="w-4 h-4" />
+            )}
+            Continue as User (Sirf Dekhna/Download)
+          </Button>
+        </div>
+
+        <DialogFooter className="pt-0">
+          <p className="text-xs text-muted-foreground/60 font-body text-center w-full">
+            Agar aap manager hain toh admin token deploy ke waqt mila hoga.
+          </p>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── PWA Install Hook ─────────────────────────────────────────────────────────
 function useInstallPrompt() {
   const [prompt, setPrompt] = useState<Event | null>(null);
@@ -505,13 +692,31 @@ export default function App() {
   const [deletingEntry, setDeletingEntry] = useState<PdfEntry | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [showUploadZone, setShowUploadZone] = useState(false);
+  const [showSetupDialog, setShowSetupDialog] = useState(false);
   const { canInstall, installed, install } = useInstallPrompt();
+  const { identity, login, clear, isInitializing, isLoggingIn } =
+    useInternetIdentity();
 
   const { data: allPdfs, isLoading } = useGetAllPdfs();
   const { data: searchResults } = useSearchPdfs(searchTerm);
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: userRole, isFetching: isRoleFetching } = useCallerUserRole();
   const uploadMutation = useUploadPdf();
   const deleteMutation = useDeletePdf();
+
+  // Show setup dialog when user logs in but has not been registered yet
+  useEffect(() => {
+    if (!identity) {
+      setShowSetupDialog(false);
+      return;
+    }
+    // Wait until the role query has resolved
+    if (isRoleFetching) return;
+    // If role is null, the user is not registered → show setup dialog
+    if (userRole === null || userRole === undefined) {
+      setShowSetupDialog(true);
+    }
+  }, [identity, userRole, isRoleFetching]);
 
   const displayedPdfs = searchTerm.trim()
     ? (searchResults ?? [])
@@ -527,8 +732,11 @@ export default function App() {
         });
         toast.success(`"${file.name}" uploaded successfully`);
         setShowUploadZone(false);
-      } catch {
-        toast.error("Upload failed. Please try again.");
+      } catch (err) {
+        console.error("Upload failed:", err);
+        const message =
+          err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error(`Upload failed: ${message}`);
       } finally {
         setUploadProgress(null);
       }
@@ -575,6 +783,42 @@ export default function App() {
               className="pl-9 h-9 bg-background border-border font-body text-sm"
             />
           </div>
+
+          {/* Auth button — Login/Logout */}
+          {isInitializing || isLoggingIn ? (
+            <div
+              data-ocid="auth.loading_state"
+              className="flex-shrink-0 flex items-center gap-1.5 text-xs text-muted-foreground px-3 py-2"
+            >
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="hidden sm:inline">
+                {isInitializing ? "Loading…" : "Logging in…"}
+              </span>
+            </div>
+          ) : identity ? (
+            <Button
+              data-ocid="auth.logout_button"
+              variant="ghost"
+              size="sm"
+              onClick={clear}
+              className="flex-shrink-0 gap-1.5 text-muted-foreground hover:text-foreground hover:bg-accent"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs">Logout</span>
+            </Button>
+          ) : (
+            <Button
+              data-ocid="auth.login_button"
+              variant="outline"
+              size="sm"
+              onClick={login}
+              className="flex-shrink-0 gap-1.5 font-display font-semibold border-primary/40 text-primary hover:bg-primary/10"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden sm:inline">Login</span>
+            </Button>
+          )}
 
           {/* Install App button — shown when PWA install is available */}
           {canInstall && (
@@ -745,6 +989,10 @@ export default function App() {
         isDeleting={deleteMutation.isPending}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingEntry(null)}
+      />
+      <AdminSetupDialog
+        open={showSetupDialog}
+        onClose={() => setShowSetupDialog(false)}
       />
     </div>
   );
