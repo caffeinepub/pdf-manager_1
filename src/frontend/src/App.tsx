@@ -9,6 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Toaster } from "@/components/ui/sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Calendar,
@@ -21,8 +22,8 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Plus,
   Search,
-  Shield,
   ShieldCheck,
   Smartphone,
   Trash2,
@@ -35,10 +36,8 @@ import type { PdfEntry } from "./backend";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import {
-  useCallerUserRole,
   useDeletePdf,
   useGetAllPdfs,
-  useInitializeRole,
   useIsAdmin,
   useSearchPdfs,
   useUploadPdf,
@@ -113,8 +112,8 @@ function PdfCard({ entry, index, isAdmin, onView, onDelete }: PdfCardProps) {
             {getFileInitials(entry.filename)}
           </button>
 
-          {/* Action buttons — visible on hover */}
-          <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          {/* Action buttons — always visible */}
+          <div className="flex gap-1.5">
             {/* View in modal button */}
             <button
               type="button"
@@ -502,184 +501,176 @@ function DeleteDialog({
   );
 }
 
-// ─── Admin Setup Dialog ───────────────────────────────────────────────────────
-interface AdminSetupDialogProps {
+// ─── Pre-Login Dialog ─────────────────────────────────────────────────────────
+// Shows BEFORE calling login() so admin token can be stored in sessionStorage
+// before useActor creates the actor and calls _initializeAccessControlWithSecret.
+interface PreLoginDialogProps {
   open: boolean;
   onClose: () => void;
+  onLogin: () => void;
+  alreadyLoggedIn: boolean;
 }
 
-function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
+function PreLoginDialog({
+  open,
+  onClose,
+  onLogin,
+  alreadyLoggedIn,
+}: PreLoginDialogProps) {
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const initializeRole = useInitializeRole();
+  const [isSettingUp, setIsSettingUp] = useState(false);
 
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!token.trim()) {
-        setError("Token zaroori hai");
-        return;
-      }
-      setError(null);
-      try {
-        // When token is non-empty, mutation stores in sessionStorage and reloads
-        // the page — so onClose/toast below may never fire. That's fine.
-        await initializeRole.mutateAsync(token.trim());
-        toast.success("Admin setup complete! Ab PDF upload kar sakte hain.");
-        setToken("");
-        onClose();
-      } catch {
-        setError("Galat token. Please check karein aur dobara try karein.");
-      }
-    },
-    [token, initializeRole, onClose],
-  );
-
-  const handleContinueAsUser = useCallback(async () => {
-    setError(null);
+  // Regular user login — no token needed, just browse PDFs
+  const handleUserLogin = useCallback(() => {
     try {
-      await initializeRole.mutateAsync("");
-      toast.success("User ke tor par login ho gaye.");
-      onClose();
+      sessionStorage.removeItem("caffeineAdminToken");
     } catch {
-      setError("Kuch galat hua. Dobara try karein.");
+      // ignore
     }
-  }, [initializeRole, onClose]);
+    if (!alreadyLoggedIn) {
+      onLogin();
+    }
+    onClose();
+    setToken("");
+  }, [onLogin, onClose, alreadyLoggedIn]);
 
-  const isPending = initializeRole.isPending;
+  // Manager/Admin login — requires token to upload/delete PDFs
+  const handleManagerLogin = useCallback(async () => {
+    const trimmed = token.trim();
+    if (!trimmed) return;
+    try {
+      sessionStorage.setItem("caffeineAdminToken", trimmed);
+    } catch {
+      // sessionStorage blocked — proceed anyway
+    }
+    if (alreadyLoggedIn) {
+      // User is already logged in — token already saved above, just reload
+      setIsSettingUp(true);
+      window.location.reload();
+      return;
+    }
+    onLogin();
+    onClose();
+    setToken("");
+  }, [token, onLogin, onClose, alreadyLoggedIn]);
+
+  const handleCancel = useCallback(() => {
+    setToken("");
+    onClose();
+  }, [onClose]);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && !isPending && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => !o && handleCancel()}>
       <DialogContent
         className="max-w-md bg-card border-border"
-        data-ocid="admin.setup_dialog"
+        data-ocid="auth.login_dialog"
       >
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
             <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center amber-glow">
-              <Shield className="w-5 h-5 text-primary" />
+              <LogIn className="w-5 h-5 text-primary" />
             </div>
             <div>
               <DialogTitle className="font-display text-lg">
-                Manager Login
+                Login Karein
               </DialogTitle>
               <p className="text-xs text-muted-foreground font-body mt-0.5">
-                Apni role select karein
+                Internet Identity se login karein
               </p>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="py-2">
-          <p className="text-sm text-muted-foreground font-body leading-relaxed mb-4">
-            Agar aap{" "}
-            <span className="text-foreground font-semibold">manager</span> hain
-            toh neeche admin token enter karein. Agar aap user hain toh koi
-            token ki zaroorat nahi — seedha continue karein.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="admin-token"
-                className="text-xs font-medium text-muted-foreground uppercase tracking-wide font-body"
-              >
-                Admin Secret Token
-              </label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="admin-token"
-                  data-ocid="admin.token_input"
-                  type={showToken ? "text" : "password"}
-                  placeholder="786901dxnamaz"
-                  value={token}
-                  onChange={(e) => {
-                    setToken(e.target.value);
-                    setError(null);
-                  }}
-                  disabled={isPending}
-                  className="pl-9 pr-10 font-mono text-sm bg-background border-border"
-                  autoComplete="off"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowToken((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  tabIndex={-1}
-                  aria-label={showToken ? "Hide token" : "Show token"}
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <p
-                data-ocid="admin.error_state"
-                className="text-xs text-destructive font-body flex items-center gap-1.5"
-              >
-                <X className="w-3.5 h-3.5 flex-shrink-0" />
-                {error}
-              </p>
-            )}
-
-            <Button
-              type="submit"
-              data-ocid="admin.setup_submit_button"
-              disabled={isPending || !token.trim()}
-              className="w-full font-display font-semibold gap-2 bg-primary text-primary-foreground hover:bg-primary/90 amber-glow"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {token.trim()
-                    ? "Admin ke tor par login ho raha hai…"
-                    : "Setting up…"}
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  Manager ke tor par login karein
-                </>
-              )}
-            </Button>
-          </form>
-
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-card px-3 text-muted-foreground font-body">
-                ya phir
+        <div className="py-2 space-y-4">
+          {/* Divider with info */}
+          <div className="rounded-lg bg-accent/40 border border-border p-3 space-y-1.5 text-xs font-body text-muted-foreground">
+            <p className="flex items-center gap-2">
+              <LogIn className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+              <span>
+                <strong className="text-foreground">User login:</strong> PDF
+                dekhne ke liye — koi token ki zaroorat nahi
               </span>
-            </div>
+            </p>
+            <p className="flex items-center gap-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+              <span>
+                <strong className="text-foreground">Manager login:</strong> PDF
+                upload/delete ke liye — token zaroori hai
+              </span>
+            </p>
           </div>
 
-          <Button
-            type="button"
-            data-ocid="admin.continue_as_user_button"
-            variant="outline"
-            disabled={isPending}
-            onClick={handleContinueAsUser}
-            className="w-full font-display gap-2 border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-          >
-            {isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <LogIn className="w-4 h-4" />
-            )}
-            User ke tor par continue karein (Sirf Dekhna)
-          </Button>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="pre-login-token"
+              className="text-xs font-medium text-muted-foreground uppercase tracking-wide font-body"
+            >
+              Manager Token (sirf admin ke liye)
+            </label>
+            <div className="relative">
+              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Input
+                id="pre-login-token"
+                data-ocid="auth.token_input"
+                type={showToken ? "text" : "password"}
+                placeholder="Token yahan daalen…"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                className="pl-9 pr-10 font-mono text-sm bg-background border-border"
+                autoComplete="off"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && token.trim()) handleManagerLogin();
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowToken((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                tabIndex={-1}
+                aria-label={showToken ? "Hide token" : "Show token"}
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground/70 font-body">
+              Regular users yeh field khali chhod dein.
+            </p>
+          </div>
         </div>
 
-        <DialogFooter className="pt-0">
-          <p className="text-xs text-muted-foreground/60 font-body text-center w-full">
-            Manager token enter karein ya user ke tor par seedha continue
-            karein.
-          </p>
+        <DialogFooter className="gap-2 flex-col sm:flex-row">
+          {/* User login — always enabled, no token needed */}
+          <Button
+            type="button"
+            variant="outline"
+            data-ocid="auth.user_login_button"
+            onClick={handleUserLogin}
+            className="flex-1 font-display font-semibold gap-2 border-border text-foreground hover:bg-accent"
+          >
+            <LogIn className="w-4 h-4" />
+            User ke tor par login karein
+          </Button>
+          {/* Manager login — only enabled when token has a value */}
+          <Button
+            type="button"
+            data-ocid="auth.manager_login_button"
+            onClick={() => void handleManagerLogin()}
+            disabled={!token.trim() || isSettingUp}
+            className="flex-1 font-display font-semibold gap-2 bg-primary text-primary-foreground hover:bg-primary/90 amber-glow disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSettingUp ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Setting up…
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="w-4 h-4" />
+                Manager Login
+              </>
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -721,45 +712,47 @@ function useInstallPrompt() {
 }
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
+const ADMIN_TOKEN = "786901dxnamaz";
+
 export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewingEntry, setViewingEntry] = useState<PdfEntry | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<PdfEntry | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [showUploadZone, setShowUploadZone] = useState(false);
-  const [showSetupDialog, setShowSetupDialog] = useState(false);
+  const [showPreLoginDialog, setShowPreLoginDialog] = useState(false);
   const { canInstall, installed, install } = useInstallPrompt();
   const { identity, login, clear, isInitializing, isLoggingIn } =
     useInternetIdentity();
+  const queryClient = useQueryClient();
 
   const { isFetching: isActorFetching } = useActor();
   const { data: allPdfs, isLoading } = useGetAllPdfs();
   const { data: searchResults } = useSearchPdfs(searchTerm);
   const { data: isAdmin = false } = useIsAdmin();
-  const {
-    data: userRole,
-    isFetching: isRoleFetching,
-    isLoading: isRoleLoading,
-  } = useCallerUserRole();
   const uploadMutation = useUploadPdf();
   const deleteMutation = useDeletePdf();
 
-  // Show setup dialog when user logs in but has not been registered yet
+  // ── Immediate admin check from sessionStorage (no backend round-trip needed)
+  // This ensures the upload button appears right after II login completes,
+  // without waiting for the isAdmin backend query to settle.
+  const storedToken =
+    typeof sessionStorage !== "undefined"
+      ? sessionStorage.getItem("caffeineAdminToken")
+      : null;
+  const tokenMatches = storedToken === ADMIN_TOKEN;
+  const showAdminUI = isAdmin || (!!identity && tokenMatches);
+
+  // ── Force-refetch isAdmin after identity change (fixes timing race)
   useEffect(() => {
-    if (!identity) {
-      setShowSetupDialog(false);
-      return;
+    if (identity) {
+      const timer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["isAdmin"] });
+        queryClient.refetchQueries({ queryKey: ["isAdmin"] });
+      }, 1500);
+      return () => clearTimeout(timer);
     }
-    // Wait until the actor is ready AND the role query has actually completed
-    // isRoleLoading = true means query hasn't finished its first fetch yet
-    // isActorFetching = true means actor (and thus identity) is still being created
-    if (isActorFetching || isRoleFetching || isRoleLoading) return;
-    // userRole === null  → query ran and returned null (unregistered user)
-    // userRole === undefined → query hasn't run yet — don't show dialog prematurely
-    if (userRole === null) {
-      setShowSetupDialog(true);
-    }
-  }, [identity, userRole, isRoleFetching, isRoleLoading, isActorFetching]);
+  }, [identity, queryClient]);
 
   const displayedPdfs = searchTerm.trim()
     ? (searchResults ?? [])
@@ -797,6 +790,9 @@ export default function App() {
       toast.error("Delete failed. Please try again.");
     }
   }, [deletingEntry, deleteMutation]);
+
+  // Suppress unused variable warning — isActorFetching is used for side effects
+  void isActorFetching;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -855,7 +851,7 @@ export default function App() {
               data-ocid="auth.login_button"
               variant="outline"
               size="sm"
-              onClick={login}
+              onClick={() => setShowPreLoginDialog(true)}
               className="flex-shrink-0 gap-1.5 font-display font-semibold border-primary/40 text-primary hover:bg-primary/10"
             >
               <LogIn className="w-4 h-4" />
@@ -886,16 +882,20 @@ export default function App() {
             </span>
           )}
 
-          {/* Upload CTA — admin only */}
-          {isAdmin && (
+          {/* Upload CTA — visible to admin (immediate sessionStorage check + backend) */}
+          {showAdminUI && (
             <Button
               data-ocid="pdf.upload_button"
               onClick={() => setShowUploadZone((v) => !v)}
               className="flex-shrink-0 font-display font-semibold gap-2 bg-primary text-primary-foreground hover:bg-primary/90 amber-glow"
             >
               <Upload className="w-4 h-4" />
-              <span className="hidden sm:inline">Upload PDF</span>
-              <span className="sm:hidden">Upload</span>
+              <span className="hidden sm:inline">
+                {showUploadZone ? "Close Upload" : "Upload PDF"}
+              </span>
+              <span className="sm:hidden">
+                {showUploadZone ? <X className="w-4 h-4" /> : "Upload"}
+              </span>
             </Button>
           )}
         </div>
@@ -903,9 +903,32 @@ export default function App() {
 
       {/* ── Main ───────────────────────────────────────────────── */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-8">
-        {/* Upload Zone Panel — admin only, collapsible */}
-        {isAdmin && showUploadZone && (
+        {/* Upload Zone Panel — admin only, collapsible with close button */}
+        {showAdminUI && showUploadZone && (
           <div className="mb-6 upload-zone-enter">
+            {/* Upload zone header with close button */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-primary/20 flex items-center justify-center">
+                  <CloudUpload className="w-3.5 h-3.5 text-primary" />
+                </div>
+                <span className="font-display font-semibold text-sm text-foreground">
+                  PDF Upload Karein
+                </span>
+                <span className="text-xs text-muted-foreground font-body">
+                  — unlimited PDFs support karta hai
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUploadZone(false)}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                title="Close upload zone"
+                data-ocid="pdf.upload_close_button"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <UploadZone
               onFileSelected={handleFileSelected}
               uploadProgress={uploadProgress}
@@ -974,14 +997,15 @@ export default function App() {
             <p className="text-muted-foreground font-body text-sm max-w-xs mb-6">
               {searchTerm
                 ? `No PDFs match "${searchTerm}". Try a different search.`
-                : isAdmin
-                  ? "Upload your first PDF to get started. Click the Upload button or drag a file here."
+                : showAdminUI
+                  ? "Upload your first PDF to get started. Click the Upload button above or use the + button below."
                   : "No PDFs are available yet. Check back soon."}
             </p>
-            {!searchTerm && isAdmin && (
+            {!searchTerm && showAdminUI && (
               <Button
                 onClick={() => setShowUploadZone(true)}
                 className="font-display font-semibold gap-2 bg-primary text-primary-foreground hover:bg-primary/90 amber-glow"
+                data-ocid="pdf.empty_upload_button"
               >
                 <Upload className="w-4 h-4" />
                 Upload your first PDF
@@ -1001,7 +1025,7 @@ export default function App() {
                 key={entry.id}
                 entry={entry}
                 index={index}
-                isAdmin={isAdmin}
+                isAdmin={showAdminUI}
                 onView={setViewingEntry}
                 onDelete={setDeletingEntry}
               />
@@ -1025,6 +1049,33 @@ export default function App() {
         </div>
       </footer>
 
+      {/* ── Floating Action Button (FAB) — admin quick upload ──── */}
+      {showAdminUI && identity && (
+        <button
+          type="button"
+          data-ocid="pdf.fab_upload_button"
+          onClick={() => {
+            setShowUploadZone(true);
+            // Scroll to top so user sees the upload zone
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={[
+            "fixed bottom-6 right-6 z-40",
+            "w-14 h-14 rounded-full",
+            "bg-primary text-primary-foreground",
+            "flex items-center justify-center",
+            "shadow-2xl amber-glow",
+            "hover:scale-110 active:scale-95",
+            "transition-transform duration-150",
+            showUploadZone ? "opacity-0 pointer-events-none" : "opacity-100",
+          ].join(" ")}
+          title="Naya PDF upload karein"
+          aria-label="Upload new PDF"
+        >
+          <Plus className="w-7 h-7" strokeWidth={2.5} />
+        </button>
+      )}
+
       {/* ── Modals ─────────────────────────────────────────────── */}
       <ViewerModal entry={viewingEntry} onClose={() => setViewingEntry(null)} />
       <DeleteDialog
@@ -1033,9 +1084,11 @@ export default function App() {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingEntry(null)}
       />
-      <AdminSetupDialog
-        open={showSetupDialog}
-        onClose={() => setShowSetupDialog(false)}
+      <PreLoginDialog
+        open={showPreLoginDialog}
+        onClose={() => setShowPreLoginDialog(false)}
+        onLogin={login}
+        alreadyLoggedIn={!!identity}
       />
     </div>
   );
