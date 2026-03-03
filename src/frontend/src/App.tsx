@@ -79,6 +79,11 @@ interface PdfCardProps {
 
 function PdfCard({ entry, index, isAdmin, onView, onDelete }: PdfCardProps) {
   const hue = (70 + index * 47) % 360;
+  const pdfUrl = entry.blob.getDirectURL();
+
+  const handleOpenPdf = useCallback(() => {
+    window.open(pdfUrl, "_blank", "noopener,noreferrer");
+  }, [pdfUrl]);
 
   return (
     <article
@@ -102,35 +107,34 @@ function PdfCard({ entry, index, isAdmin, onView, onDelete }: PdfCardProps) {
               background: `oklch(0.22 0.04 ${hue})`,
               color: `oklch(0.78 0.18 ${hue})`,
             }}
-            onClick={() => onView(entry)}
-            title="View PDF"
+            onClick={handleOpenPdf}
+            title="PDF Kholo"
           >
             {getFileInitials(entry.filename)}
           </button>
 
           {/* Action buttons — visible on hover */}
           <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            {/* View button */}
+            {/* View in modal button */}
             <button
               type="button"
               className="p-1.5 rounded-md bg-accent/60 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => onView(entry)}
-              title="View PDF"
+              title="Viewer mein kholo"
             >
               <Eye className="w-3.5 h-3.5" />
             </button>
 
             {/* Open in new tab — visible to all */}
-            <a
+            <button
+              type="button"
               data-ocid={`pdf.open_button.${index + 1}`}
-              href={entry.blob.getDirectURL()}
-              target="_blank"
-              rel="noopener noreferrer"
               className="p-1.5 rounded-md bg-primary/20 hover:bg-primary/40 text-primary/80 hover:text-primary transition-colors"
-              title="PDF kholo"
+              onClick={handleOpenPdf}
+              title="Naye tab mein kholo"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            </button>
 
             {/* Delete button — admin only */}
             {isAdmin && (
@@ -147,11 +151,12 @@ function PdfCard({ entry, index, isAdmin, onView, onDelete }: PdfCardProps) {
           </div>
         </div>
 
-        {/* Filename — clickable to view */}
+        {/* Filename — clickable to open PDF directly */}
         <button
           type="button"
           className="text-left w-full cursor-pointer"
-          onClick={() => onView(entry)}
+          onClick={handleOpenPdf}
+          title="PDF Kholo"
         >
           <p className="font-display font-semibold text-foreground text-sm leading-tight mb-3 line-clamp-2 hover:text-primary transition-colors">
             {entry.filename.replace(/\.pdf$/i, "")}
@@ -296,9 +301,11 @@ interface ViewerModalProps {
 function ViewerModal({ entry, onClose }: ViewerModalProps) {
   const url = entry ? entry.blob.getDirectURL() : null;
   const [visible, setVisible] = useState(false);
+  const [useGoogleDocs, setUseGoogleDocs] = useState(false);
 
   useEffect(() => {
     if (entry) {
+      setUseGoogleDocs(false);
       // Tiny delay so the CSS transition kicks in after mount
       requestAnimationFrame(() => setVisible(true));
     } else {
@@ -307,6 +314,15 @@ function ViewerModal({ entry, onClose }: ViewerModalProps) {
   }, [entry]);
 
   if (!entry) return null;
+
+  const googleDocsUrl = url
+    ? `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
+    : null;
+  const iframeSrc = useGoogleDocs ? googleDocsUrl : url;
+
+  const handleOpenInNewTab = () => {
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div
@@ -317,8 +333,8 @@ function ViewerModal({ entry, onClose }: ViewerModalProps) {
       data-ocid="pdf.viewer_modal"
     >
       {/* Viewer header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="w-8 h-8 rounded bg-primary/20 flex items-center justify-center flex-shrink-0">
             <FileText className="w-4 h-4 text-primary" />
           </div>
@@ -333,20 +349,19 @@ function ViewerModal({ entry, onClose }: ViewerModalProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-          {/* Open in new tab button in viewer — visible to all */}
+        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+          {/* Primary CTA — big prominent open button */}
           {url && (
-            <a
+            <Button
               data-ocid="pdf.viewer_open_button"
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
-              title="PDF kholo"
+              onClick={handleOpenInNewTab}
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-display font-semibold amber-glow"
+              size="sm"
             >
               <ExternalLink className="w-4 h-4" />
-              <span className="hidden sm:inline">Naye Tab Mein Kholo</span>
-            </a>
+              <span className="hidden xs:inline">PDF Kholo</span>
+              <span className="hidden sm:inline"> (Naye Tab Mein)</span>
+            </Button>
           )}
 
           <Button
@@ -354,43 +369,55 @@ function ViewerModal({ entry, onClose }: ViewerModalProps) {
             size="sm"
             onClick={onClose}
             data-ocid="pdf.viewer_close_button"
+            className="text-muted-foreground hover:text-foreground"
           >
-            <X className="w-4 h-4 mr-1.5" />
-            Close
+            <X className="w-4 h-4 mr-1" />
+            <span className="hidden sm:inline">Close</span>
           </Button>
         </div>
       </div>
 
       {/* PDF iframe */}
       <div className="flex-1 min-h-0 flex flex-col">
-        {url ? (
+        {iframeSrc ? (
           <>
             <iframe
-              src={url}
+              key={iframeSrc}
+              src={iframeSrc}
               className="w-full flex-1 border-0"
               title={entry.filename}
               style={{ minHeight: 0 }}
             />
             {/* Fallback bar — for browsers that block iframe PDF rendering */}
-            <div className="flex items-center justify-center gap-3 py-2 px-4 border-t border-border bg-card/80 text-xs text-muted-foreground flex-shrink-0">
+            <div className="flex flex-wrap items-center justify-center gap-3 py-2 px-4 border-t border-border bg-card/80 text-xs text-muted-foreground flex-shrink-0">
               <span>PDF nahi dikh raha?</span>
-              <a
-                href={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline font-medium"
-              >
-                Google Docs mein kholo
-              </a>
+              {!useGoogleDocs ? (
+                <button
+                  type="button"
+                  onClick={() => setUseGoogleDocs(true)}
+                  className="text-primary hover:underline font-medium"
+                >
+                  Google Docs se try karein
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setUseGoogleDocs(false)}
+                  className="text-primary hover:underline font-medium"
+                >
+                  Direct link try karein
+                </button>
+              )}
               <span>·</span>
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline font-medium"
-              >
-                Naye tab mein kholo
-              </a>
+              {url && (
+                <button
+                  type="button"
+                  onClick={handleOpenInNewTab}
+                  className="text-primary hover:underline font-medium"
+                >
+                  Naye tab mein kholo
+                </button>
+              )}
             </div>
           </>
         ) : (

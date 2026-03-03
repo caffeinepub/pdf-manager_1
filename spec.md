@@ -1,23 +1,32 @@
 # PDF Manager
 
 ## Current State
-- Admin can upload/delete PDFs; users can only view/open them
-- Login via Internet Identity; admin token `786901dxnamaz` is set in environment
-- On first login, a setup dialog asks for admin token or "Continue as User"
-- `isCallerAdmin` query internally calls `getUserRole` which calls `Runtime.trap` when the caller is not yet registered — this causes the query to fail silently and return `false`, hiding the Upload button even for the actual admin
+- App has PDF upload, view, delete, search functionality
+- Admin login via Internet Identity + token `786901dxnamaz`
+- PDF viewer uses iframe with fallback links
+- PDFs stored via blob-storage component
+- Upload flow uses `ExternalBlob.fromBytes` + `actor.uploadPdf`
 
 ## Requested Changes (Diff)
 
 ### Add
-- Nothing new
+- "Namaz ka tariqa" category or label support (optional, not blocking)
+- Robust PDF viewer: try iframe first, show clear open-in-new-tab fallback prominently
+- Upload retry mechanism with clear error feedback
 
 ### Modify
-- Fix `isCallerAdmin` (and `hasPermission`) to return `false` (not trap) when caller is not yet registered in the access-control state
-- Keep all existing features intact
+- PDF card click: open PDF directly in new tab (most reliable cross-browser approach)
+- ViewerModal: show the PDF URL as a proper clickable link with a big "Kholo" button, rather than relying solely on iframe
+- PDF list fetch: ensure `getAllPdfs` is called on every page load and after login, not just when actor is ready
+- Upload: fix any issue where upload silently fails; show progress bar and error clearly
+- Admin upload button: always visible after admin login, no extra steps
 
 ### Remove
-- Nothing
+- No features to remove
 
 ## Implementation Plan
-1. Regenerate Motoko backend with `isAdmin` and `hasPermission` using safe null-check instead of `Runtime.trap` for unregistered callers
-2. No frontend changes needed — existing setup dialog flow is correct
+1. Fix `PdfCard` -- clicking filename or card opens PDF in new tab directly (no modal needed, simpler and more reliable)
+2. Keep ViewerModal but make iframe + Google Docs viewer + direct link all prominent with large buttons
+3. Fix `useGetAllPdfs` -- ensure staleTime is 0 so PDFs always reload fresh
+4. Fix upload: add better error handling, show toast with specific error, ensure admin state is fresh before upload
+5. Add `refetchOnMount: "always"` to getAllPdfs query so PDFs are never stale on load

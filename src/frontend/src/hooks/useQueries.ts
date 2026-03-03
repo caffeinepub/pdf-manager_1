@@ -17,6 +17,7 @@ export function useIsAdmin() {
     },
     enabled: !!actor && !isFetching,
     staleTime: 0,
+    refetchOnMount: "always",
     retry: false,
   });
 }
@@ -71,7 +72,10 @@ export function useGetAllPdfs() {
       if (!actor) return [];
       return actor.getAllPdfs();
     },
+    // Public query — only needs actor to be ready, no identity required
     enabled: !!actor && !isFetching,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
@@ -86,6 +90,8 @@ export function useSearchPdfs(searchTerm: string) {
       return actor.searchPdfs(searchTerm);
     },
     enabled: !!actor && !isFetching,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
@@ -102,16 +108,24 @@ export function useUploadPdf() {
       file: File;
       onProgress: (pct: number) => void;
     }) => {
-      if (!actor) throw new Error("Actor not ready");
-      const id = crypto.randomUUID();
-      const arrayBuffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      const blob = ExternalBlob.fromBytes(bytes).withUploadProgress(onProgress);
-      await actor.uploadPdf(id, file.name, BigInt(file.size), blob);
-      return id;
+      if (!actor) throw new Error("Actor not ready — please try again");
+      try {
+        const id = crypto.randomUUID();
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        const blob =
+          ExternalBlob.fromBytes(bytes).withUploadProgress(onProgress);
+        await actor.uploadPdf(id, file.name, BigInt(file.size), blob);
+        return id;
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : String(err ?? "Unknown error");
+        throw new Error(`Upload failed: ${msg}`);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pdfs"] });
+      queryClient.refetchQueries({ queryKey: ["pdfs"] });
     },
   });
 }
