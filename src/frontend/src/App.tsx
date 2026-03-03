@@ -32,6 +32,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PdfEntry } from "./backend";
+import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import {
   useCallerUserRole,
@@ -699,10 +700,15 @@ export default function App() {
   const { identity, login, clear, isInitializing, isLoggingIn } =
     useInternetIdentity();
 
+  const { isFetching: isActorFetching } = useActor();
   const { data: allPdfs, isLoading } = useGetAllPdfs();
   const { data: searchResults } = useSearchPdfs(searchTerm);
   const { data: isAdmin = false } = useIsAdmin();
-  const { data: userRole, isFetching: isRoleFetching } = useCallerUserRole();
+  const {
+    data: userRole,
+    isFetching: isRoleFetching,
+    isLoading: isRoleLoading,
+  } = useCallerUserRole();
   const uploadMutation = useUploadPdf();
   const deleteMutation = useDeletePdf();
 
@@ -712,13 +718,16 @@ export default function App() {
       setShowSetupDialog(false);
       return;
     }
-    // Wait until the role query has resolved
-    if (isRoleFetching) return;
-    // If role is null, the user is not registered → show setup dialog
-    if (userRole === null || userRole === undefined) {
+    // Wait until the actor is ready AND the role query has actually completed
+    // isRoleLoading = true means query hasn't finished its first fetch yet
+    // isActorFetching = true means actor (and thus identity) is still being created
+    if (isActorFetching || isRoleFetching || isRoleLoading) return;
+    // userRole === null  → query ran and returned null (unregistered user)
+    // userRole === undefined → query hasn't run yet — don't show dialog prematurely
+    if (userRole === null) {
       setShowSetupDialog(true);
     }
-  }, [identity, userRole, isRoleFetching]);
+  }, [identity, userRole, isRoleFetching, isRoleLoading, isActorFetching]);
 
   const displayedPdfs = searchTerm.trim()
     ? (searchResults ?? [])

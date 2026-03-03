@@ -16,7 +16,8 @@ export function useIsAdmin() {
       }
     },
     enabled: !!actor && !isFetching,
-    staleTime: 60_000,
+    staleTime: 0,
+    retry: false,
   });
 }
 
@@ -36,6 +37,7 @@ export function useCallerUserRole() {
     },
     enabled: !!actor && !isFetching,
     staleTime: 30_000,
+    retry: false,
   });
 }
 
@@ -50,8 +52,12 @@ export function useInitializeRole() {
       await actor._initializeAccessControlWithSecret(token);
     },
     onSuccess: () => {
+      // Invalidate and immediately refetch so isAdmin and userRole reflect the
+      // newly registered role without waiting for the next stale check.
       queryClient.invalidateQueries({ queryKey: ["isAdmin"] });
       queryClient.invalidateQueries({ queryKey: ["callerUserRole"] });
+      queryClient.refetchQueries({ queryKey: ["isAdmin"] });
+      queryClient.refetchQueries({ queryKey: ["callerUserRole"] });
     },
   });
 }
