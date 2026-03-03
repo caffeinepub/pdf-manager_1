@@ -1,16 +1,18 @@
-import Int "mo:core/Int";
 import Map "mo:core/Map";
-import Text "mo:core/Text";
+import Principal "mo:core/Principal";
 import Time "mo:core/Time";
-import Array "mo:core/Array";
 import Iter "mo:core/Iter";
+import Text "mo:core/Text";
 import Runtime "mo:core/Runtime";
 import Order "mo:core/Order";
-import Principal "mo:core/Principal";
-import MixinStorage "blob-storage/Mixin";
+import Array "mo:core/Array";
+import Int "mo:core/Int";
 import Storage "blob-storage/Storage";
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
+import MixinStorage "blob-storage/Mixin";
+
+
 
 actor {
   // Authorization system
@@ -24,7 +26,6 @@ actor {
 
   let userProfiles = Map.empty<Principal, UserProfile>();
 
-  // User Profile Functions
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access profiles");
@@ -46,7 +47,6 @@ actor {
     userProfiles.add(caller, profile);
   };
 
-  // PDF Management
   type PdfEntry = {
     id : Text;
     filename : Text;

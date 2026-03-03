@@ -13,7 +13,7 @@ import {
   BookOpen,
   Calendar,
   CloudUpload,
-  Download,
+  ExternalLink,
   Eye,
   FileText,
   HardDrive,
@@ -119,15 +119,16 @@ function PdfCard({ entry, index, isAdmin, onView, onDelete }: PdfCardProps) {
               <Eye className="w-3.5 h-3.5" />
             </button>
 
-            {/* Download button — visible to all */}
+            {/* Open in new tab — visible to all */}
             <a
-              data-ocid={`pdf.download_button.${index + 1}`}
+              data-ocid={`pdf.open_button.${index + 1}`}
               href={entry.blob.getDirectURL()}
-              download={entry.filename}
+              target="_blank"
+              rel="noopener noreferrer"
               className="p-1.5 rounded-md bg-primary/20 hover:bg-primary/40 text-primary/80 hover:text-primary transition-colors"
-              title="Download PDF"
+              title="PDF kholo"
             >
-              <Download className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3.5 h-3.5" />
             </a>
 
             {/* Delete button — admin only */}
@@ -332,17 +333,18 @@ function ViewerModal({ entry, onClose }: ViewerModalProps) {
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-          {/* Download button in viewer — visible to all */}
+          {/* Open in new tab button in viewer — visible to all */}
           {url && (
             <a
-              data-ocid="pdf.viewer_download_button"
+              data-ocid="pdf.viewer_open_button"
               href={url}
-              download={entry.filename}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
-              title="Download PDF"
+              title="PDF kholo"
             >
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Download</span>
+              <ExternalLink className="w-4 h-4" />
+              <span className="hidden sm:inline">Naye Tab Mein Kholo</span>
             </a>
           )}
 
