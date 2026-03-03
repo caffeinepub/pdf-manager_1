@@ -518,17 +518,19 @@ function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!token.trim()) {
-        setError("Token is required");
+        setError("Token zaroori hai");
         return;
       }
       setError(null);
       try {
+        // When token is non-empty, mutation stores in sessionStorage and reloads
+        // the page — so onClose/toast below may never fire. That's fine.
         await initializeRole.mutateAsync(token.trim());
-        toast.success("Admin setup complete! You can now upload PDFs.");
+        toast.success("Admin setup complete! Ab PDF upload kar sakte hain.");
         setToken("");
         onClose();
       } catch {
-        setError("Wrong token. Please check and try again.");
+        setError("Galat token. Please check karein aur dobara try karein.");
       }
     },
     [token, initializeRole, onClose],
@@ -538,10 +540,10 @@ function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
     setError(null);
     try {
       await initializeRole.mutateAsync("");
-      toast.success("Logged in as regular user.");
+      toast.success("User ke tor par login ho gaye.");
       onClose();
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError("Kuch galat hua. Dobara try karein.");
     }
   }, [initializeRole, onClose]);
 
@@ -560,7 +562,7 @@ function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
             </div>
             <div>
               <DialogTitle className="font-display text-lg">
-                Pehli Baar Login
+                Manager Login
               </DialogTitle>
               <p className="text-xs text-muted-foreground font-body mt-0.5">
                 Apni role select karein
@@ -591,7 +593,7 @@ function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
                   id="admin-token"
                   data-ocid="admin.token_input"
                   type={showToken ? "text" : "password"}
-                  placeholder="Token yahan enter karein…"
+                  placeholder="786901dxnamaz"
                   value={token}
                   onChange={(e) => {
                     setToken(e.target.value);
@@ -632,12 +634,14 @@ function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
               {isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Setting up…
+                  {token.trim()
+                    ? "Admin ke tor par login ho raha hai…"
+                    : "Setting up…"}
                 </>
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  Setup as Admin
+                  Manager ke tor par login karein
                 </>
               )}
             </Button>
@@ -667,13 +671,14 @@ function AdminSetupDialog({ open, onClose }: AdminSetupDialogProps) {
             ) : (
               <LogIn className="w-4 h-4" />
             )}
-            Continue as User (Sirf Dekhna/Download)
+            User ke tor par continue karein (Sirf Dekhna)
           </Button>
         </div>
 
         <DialogFooter className="pt-0">
           <p className="text-xs text-muted-foreground/60 font-body text-center w-full">
-            Agar aap manager hain toh admin token deploy ke waqt mila hoga.
+            Manager token enter karein ya user ke tor par seedha continue
+            karein.
           </p>
         </DialogFooter>
       </DialogContent>

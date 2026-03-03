@@ -50,7 +50,25 @@ export function useInitializeRole() {
   return useMutation({
     mutationFn: async (token: string) => {
       if (!actor) throw new Error("Actor not ready");
-      await actor._initializeAccessControlWithSecret(token);
+
+      if (token.trim()) {
+        // Admin path: store token in sessionStorage so useActor picks it up
+        // fresh on reload and calls _initializeAccessControlWithSecret(token)
+        // with the correct value — registering the caller as admin.
+        try {
+          sessionStorage.setItem("caffeineAdminToken", token.trim());
+        } catch {
+          // sessionStorage blocked (rare) — fall through to direct call
+          await actor._initializeAccessControlWithSecret(token.trim());
+          return;
+        }
+        // Reload so useActor reads the token from sessionStorage on mount
+        window.location.reload();
+        // Return a promise that never resolves — page is reloading
+        return new Promise<void>(() => {});
+      }
+      // User path: register as regular user directly (empty token = user role)
+      await actor._initializeAccessControlWithSecret("");
     },
     onSuccess: () => {
       // Invalidate and immediately refetch so isAdmin and userRole reflect the
